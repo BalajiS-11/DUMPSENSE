@@ -447,26 +447,15 @@ export default function UploadReport({ onReportSuccess }) {
                   <ConfidenceBadge classification={aiResult.classification} confidence={aiResult.confidence} />
                 </div>
 
-                <div className="flex gap-3 items-center">
-                  {aiResult.annotated_url && (
-                    <div className="w-20 h-16 rounded-element overflow-hidden bg-black flex-shrink-0 border border-slate-300">
-                      <img 
-                        src={getImageUrl(aiResult.annotated_url)} 
-                        alt="YOLO BBoxes" 
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                  )}
-                  <div className="text-xs text-slate-600 space-y-0.5">
-                    <p className="font-medium text-slate-800">
-                      Classification: <span className="font-bold uppercase text-accent">{aiResult.classification}</span>
-                    </p>
-                    <p className="text-[11px] text-slate-500">
-                      {aiResult.no_detection 
-                        ? 'No active fire or large waste pile detected. Photo will be marked unverified for officer review.'
-                        : `Confidence score: ${Math.round((aiResult.confidence || 0) * 100)}% with bounding box detection.`}
-                    </p>
-                  </div>
+                <div className="text-xs text-slate-600 space-y-1">
+                  <p className="font-medium text-slate-800">
+                    Classification: <span className="font-bold uppercase text-accent">{aiResult.classification}</span>
+                  </p>
+                  <p className="text-[11px] text-slate-500">
+                    {aiResult.no_detection 
+                      ? 'No active fire or large waste pile detected. Photo will be marked unverified for officer review.'
+                      : `Confidence score: ${Math.round((aiResult.confidence || 0) * 100)}% verified via dual YOLOv8 model.`}
+                  </p>
                 </div>
               </div>
             )}

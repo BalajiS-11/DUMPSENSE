@@ -488,7 +488,7 @@ export default function MyReports({ currentUser, justSubmittedId, onNavigateRepo
         const baseBoost = isFire ? 45 : 25;
         const severityScore = Math.min(100, Math.round(((confVal * 0.6) + (baseBoost * 0.1)) * 10) / 10);
         const detectingModel = rep.detecting_model || (isFire ? 'Fire Model (best.pt)' : 'Waste Model (best2.pt)');
-        const displayPhoto = rep.annotated_url ? getImageUrl(rep.annotated_url) : getImageUrl(rep.photo_url);
+        const displayPhoto = getImageUrl(rep.photo_url);
         const mapboxToken = import.meta.env.VITE_MAPBOX_TOKEN;
         const staticMapUrl = mapboxToken && rep.lat && rep.lng
           ? `https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/pin-s+22c55e(${rep.lng},${rep.lat})/${rep.lng},${rep.lat},14,0/500x200@2x?access_token=${mapboxToken}`
@@ -540,19 +540,14 @@ export default function MyReports({ currentUser, justSubmittedId, onNavigateRepo
                     </span>
                   </div>
 
-                  {/* Photo with Bounding Box annotation preview */}
+                  {/* Clean Photographic Evidence (Unannotated) */}
                   <div className="relative rounded-element overflow-hidden bg-slate-900 border border-slate-300 max-h-56 group">
                     <img 
                       src={displayPhoto} 
-                      alt="Analyzed incident" 
+                      alt="Incident evidence" 
                       className="w-full h-48 sm:h-52 object-contain bg-slate-950"
-                      onError={(e) => { e.target.src = getImageUrl(rep.photo_url); }}
+                      onError={(e) => { e.target.src = '/test_image.webp'; }}
                     />
-                    {rep.annotated_url && (
-                      <span className="absolute bottom-2 left-2 bg-slate-900/80 backdrop-blur-xs text-white text-[10px] font-mono px-2 py-0.5 rounded border border-slate-700">
-                        YOLOv8 AI Detection Box
-                      </span>
-                    )}
                   </div>
 
                   {/* Badges and Metrics */}
