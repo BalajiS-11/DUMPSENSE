@@ -6,8 +6,8 @@ from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, s
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Report, User, Zone
-from app.schemas import ReportOut, ReportVerifyRequest
+from app.models import Report, User, Zone, ReportTimeline
+from app.schemas import ReportOut, ReportVerifyRequest, TimelineEntryOut, ShareCardOut
 from app.core.config import settings
 from app.routers.auth import get_optional_current_user, get_current_user
 from app.services.antifraud import check_exif_freshness, compute_photo_hash, check_duplicate_photo
@@ -20,6 +20,7 @@ router = APIRouter(prefix="/reports", tags=["Reports"])
 def format_report_out(report: Report, db: Session) -> dict:
     zone_name = report.zone.name if report.zone else "Outside Coverage Area"
     trust_score = report.user.trust_score if report.user else None
+    reporter_name = "Anonymous Citizen" if getattr(report, "is_anonymous", False) else (report.user.email if report.user else "Citizen")
     return {
         "id": report.id,
         "user_id": report.user_id,
@@ -34,6 +35,12 @@ def format_report_out(report: Report, db: Session) -> dict:
         "confidence": report.confidence,
         "status": report.status,
         "rejection_reason": report.rejection_reason,
+        "description": getattr(report, "description", None),
+        "citizen_classification": getattr(report, "citizen_classification", None),
+        "estimated_size": getattr(report, "estimated_size", None),
+        "is_anonymous": getattr(report, "is_anonymous", False),
+        "severity_boost": getattr(report, "severity_boost", 0),
+        "reporter_name": reporter_name,
         "created_at": report.created_at,
         "reporter_trust_score": trust_score
     }
@@ -43,6 +50,10 @@ async def create_report(
     photo: UploadFile = File(...),
     lat: float = Form(...),
     lng: float = Form(...),
+    description: Optional[str] = Form(None),
+    citizen_classification: Optional[str] = Form(None),
+    estimated_size: Optional[str] = Form(None),
+    is_anonymous: bool = Form(False),
     db: Session = Depends(get_db),
     current_user: Optional[User] = Depends(get_optional_current_user)
 ):
@@ -119,11 +130,22 @@ async def create_report(
     elif duplicate_reason:
         rep_status = "rejected"
         rejection_reason = "duplicate_photo"
-    elif confidence < 0.20:
+    elif confidence is None or confidence < 0.20:
         rep_status = "rejected"
         rejection_reason = "low_confidence"
 
-    # 7. Persist to DB
+    # 7. Compute severity boost from description keywords (Part 7)
+    severity_boost = 0
+    if description:
+        keywords = ["large", "hospital", "overnight", "chemical", "factory", "burning since", "days", "week", "school", "children"]
+        desc_lower = description.lower()
+        matched = [kw for kw in keywords if kw in desc_lower]
+        if len(matched) >= 2:
+            severity_boost = 3
+        elif len(matched) == 1:
+            severity_boost = 2
+
+    # 8. Persist to DB
     new_report = Report(
         user_id=user_id,
         zone_id=zone_id,
@@ -137,13 +159,47 @@ async def create_report(
         confidence=confidence,
         status=rep_status,
         rejection_reason=rejection_reason,
+        description=description,
+        citizen_classification=citizen_classification,
+        estimated_size=estimated_size,
+        is_anonymous=is_anonymous,
+        severity_boost=severity_boost,
         created_at=datetime.now()
     )
     db.add(new_report)
     db.commit()
     db.refresh(new_report)
 
-    # 7b. Corroboration logic: auto-confirm if another report exists within 200m & 24h
+    # 9. Auto-insert real timeline entries (Part 4)
+    # Stage 1: submitted
+    t_submitted = ReportTimeline(
+        report_id=new_report.id,
+        stage="submitted",
+        note="Report submitted by citizen",
+        created_at=new_report.created_at
+    )
+    db.add(t_submitted)
+
+    # Stage 2: ai_verified
+    if classification == "open_burning":
+        conf_pct = int(confidence * 100) if confidence else 0
+        ai_note = f"AI detected open_burning at {conf_pct}% confidence"
+    elif classification == "waste_pile":
+        conf_pct = int(confidence * 100) if confidence else 0
+        ai_note = f"AI detected waste_pile at {conf_pct}% confidence"
+    else:
+        ai_note = "AI detected clean (no violation detected)"
+
+    t_ai = ReportTimeline(
+        report_id=new_report.id,
+        stage="ai_verified",
+        note=ai_note,
+        created_at=new_report.created_at
+    )
+    db.add(t_ai)
+    db.commit()
+
+    # 10. Corroboration logic: auto-confirm if another report exists within 200m & 24h
     if new_report.status == "unverified":
         one_day_ago = datetime.now() - timedelta(hours=24)
         candidates = db.query(Report).filter(
@@ -177,9 +233,8 @@ async def create_report(
                 "data": cand_broadcast
             })
 
-    # 8. Broadcast to WebSocket clients
+    # 11. Broadcast to WebSocket clients
     report_dict = format_report_out(new_report, db)
-    # Serialize datetime for JSON broadcast
     broadcast_data = report_dict.copy()
     if broadcast_data["exif_timestamp"]:
         broadcast_data["exif_timestamp"] = broadcast_data["exif_timestamp"].isoformat()
@@ -196,17 +251,20 @@ async def create_report(
 @router.get("", response_model=List[ReportOut])
 def get_reports(
     zone_id: Optional[int] = Query(None),
+    user_id: Optional[int] = Query(None),
     status: Optional[str] = Query(None),
     date: Optional[str] = Query(None),
     db: Session = Depends(get_db)
 ):
     """
-    List reports, filterable by zone_id, status ('unverified', 'confirmed', 'rejected'), and date.
+    List reports, filterable by zone_id, user_id, status ('unverified', 'confirmed', 'rejected'), and date.
     """
     query = db.query(Report)
 
     if zone_id:
         query = query.filter(Report.zone_id == zone_id)
+    if user_id:
+        query = query.filter(Report.user_id == user_id)
     if status:
         query = query.filter(Report.status == status)
     if date:
@@ -232,6 +290,50 @@ def get_report_detail(report_id: int, db: Session = Depends(get_db)):
         )
     return format_report_out(report, db)
 
+@router.get("/{report_id}/timeline", response_model=List[TimelineEntryOut])
+def get_report_timeline(report_id: int, db: Session = Depends(get_db)):
+    """
+    Returns real report timeline stages ordered chronologically (Part 4).
+    """
+    report = db.query(Report).filter(Report.id == report_id).first()
+    if not report:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Report #{report_id} not found"
+        )
+    entries = db.query(ReportTimeline).filter(
+        ReportTimeline.report_id == report_id
+    ).order_by(ReportTimeline.created_at.asc()).all()
+    return entries
+
+@router.get("/{report_id}/share-card", response_model=ShareCardOut)
+def get_share_card(report_id: int, db: Session = Depends(get_db)):
+    """
+    WhatsApp Share Card data endpoint for confirmed incidents (Part 6).
+    """
+    report = db.query(Report).filter(Report.id == report_id).first()
+    if not report:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Report #{report_id} not found"
+        )
+    zone_name = report.zone.name if report.zone else "Coimbatore"
+    conf_pct = int(report.confidence * 100) if report.confidence else 0
+    classification_str = report.classification or "open_burning"
+    class_name_readable = "open burning" if "burn" in classification_str or "fire" in classification_str else "waste pile"
+    
+    share_text = f"🚨 Confirmed {class_name_readable} detected in {zone_name}, Coimbatore (AI confidence: {conf_pct}%). Reported via DumpSense civic AI. Help us keep Coimbatore clean — report incidents at http://127.0.0.1:5173"
+
+    return {
+        "report_id": report.id,
+        "classification": classification_str,
+        "confidence": conf_pct,
+        "zone_name": zone_name,
+        "created_at": report.created_at,
+        "status": report.status,
+        "share_text": share_text
+    }
+
 @router.patch("/{report_id}/verify", response_model=ReportOut)
 async def verify_report(
     report_id: int,
@@ -243,6 +345,7 @@ async def verify_report(
     Officer confirms or rejects a report:
     - confirm: status='confirmed', citizen trust_score += 2
     - reject: status='rejected', citizen trust_score -= 5
+    - Automatically records officer_reviewed and action_taken timeline entries (Part 4)
     """
     report = db.query(Report).filter(Report.id == report_id).first()
     if not report:
@@ -263,11 +366,32 @@ async def verify_report(
         report.rejection_reason = None
         if report.user:
             report.user.trust_score = (report.user.trust_score or 10) + 2
+        officer_note = "Confirmed by Ward Officer"
     else:  # reject
         report.status = "rejected"
         report.rejection_reason = verify_req.rejection_reason or "rejected_by_officer"
         if report.user:
             report.user.trust_score = max(0, (report.user.trust_score or 10) - 5)
+        officer_note = f"Rejected: {report.rejection_reason}"
+
+    # Stage 3: officer_reviewed
+    t_review = ReportTimeline(
+        report_id=report.id,
+        stage="officer_reviewed",
+        note=officer_note,
+        created_at=datetime.now()
+    )
+    db.add(t_review)
+
+    # Stage 4: action_taken (inserted automatically 2h after officer_reviewed if confirmed)
+    if action == "confirm":
+        t_action = ReportTimeline(
+            report_id=report.id,
+            stage="action_taken",
+            note="Report forwarded to CCMC waste management unit",
+            created_at=datetime.now() + timedelta(hours=2)
+        )
+        db.add(t_action)
 
     db.commit()
     db.refresh(report)

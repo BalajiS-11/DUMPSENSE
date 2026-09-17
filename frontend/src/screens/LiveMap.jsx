@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
 if (typeof window !== 'undefined' && maplibregl.setWorkerUrl) {
   maplibregl.setWorkerUrl('/maplibre-gl-worker.mjs');
 }
+
 import { 
   Flame, 
   Trash2, 
@@ -16,25 +17,52 @@ import {
   Activity, 
   ShieldCheck, 
   AlertCircle,
+  AlertTriangle,
   Eye,
-  Layers
+  Layers,
+  MapPin,
+  Check
 } from 'lucide-react';
-import { reportsApi, predictApi, createReportsWebSocket, getImageUrl } from '../api';
+import { reportsApi, predictApi, zonesApi, createReportsWebSocket, getImageUrl } from '../api';
 import { StatusBadge, ConfidenceBadge } from '../components/Badges';
 
 // Coimbatore Central Coordinate (Lat: 11.002, Lng: 77.005)
 const COIMBATORE_CENTER = [77.0050, 11.0020];
 
+// Haversine distance calculation in meters
+function haversineDistanceMeters(lat1, lon1, lat2, lon2) {
+  const R = 6371000; // Radius of Earth in meters
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
 export default function LiveMap({ onSelectReport }) {
   const mapContainer = useRef(null);
   const map = useRef(null);
-  const markersRef = useRef([]);
+  const reportMarkersRef = useRef([]);
+  const officialMarkersRef = useRef([]);
 
   const [reports, setReports] = useState([]);
+  const [officialZones, setOfficialZones] = useState([]);
   const [selectedZone, setSelectedZone] = useState('all');
+  
+  // Layer toggles
+  const [showOfficialLayer, setShowOfficialLayer] = useState(true);
+  const [showReportsLayer, setShowReportsLayer] = useState(true);
   const [predictTonight, setPredictTonight] = useState(false);
   const [predictionData, setPredictionData] = useState(null);
+
+  // Inspected objects
   const [selectedPin, setSelectedPin] = useState(null);
+  const [selectedOfficialZone, setSelectedOfficialZone] = useState(null);
   const [loadingReports, setLoadingReports] = useState(true);
 
   // 1. Fetch reports
@@ -51,11 +79,25 @@ export default function LiveMap({ onSelectReport }) {
     }
   };
 
+  // 2. Fetch Official CCMC Zones (Part 1D)
+  const fetchOfficialZones = async () => {
+    try {
+      const data = await zonesApi.getOfficialZones();
+      setOfficialZones(data);
+    } catch (err) {
+      console.error('Failed to load official CCMC zones:', err);
+    }
+  };
+
   useEffect(() => {
     fetchReports();
   }, [selectedZone]);
 
-  // 2. Real-time WebSocket connection
+  useEffect(() => {
+    fetchOfficialZones();
+  }, []);
+
+  // 3. Real-time WebSocket connection
   useEffect(() => {
     const cleanupWs = createReportsWebSocket((message) => {
       if (message.type === 'REPORT_CREATED') {
@@ -72,14 +114,9 @@ export default function LiveMap({ onSelectReport }) {
     return () => cleanupWs();
   }, [selectedPin]);
 
-  // 3. Initialize Mapbox GL with Real Dark Matter Street Tiles of Coimbatore
+  // 4. Initialize MapLibre GL with Real Dark Matter Street Tiles of Coimbatore
   useEffect(() => {
     if (map.current || !mapContainer.current) return;
-
-    const mapboxToken = import.meta.env.VITE_MAPBOX_TOKEN;
-    if (mapboxToken) {
-      mapboxgl.accessToken = mapboxToken;
-    }
 
     // High performance dark tactical road tiles (zero watermarks, zero API key required)
     const styleSpec = {
@@ -124,24 +161,24 @@ export default function LiveMap({ onSelectReport }) {
     };
   }, []);
 
-  // 4. Update Map Markers whenever reports or predictTonight change
+  // 5. Update Citizen Report Markers (Layer 2: 🔴 Illegal Dumps)
   useEffect(() => {
     if (!map.current) return;
 
-    // Clear previous markers
-    markersRef.current.forEach((m) => m.remove());
-    markersRef.current = [];
+    // Clear previous report markers
+    reportMarkersRef.current.forEach((m) => m.remove());
+    reportMarkersRef.current = [];
+
+    if (!showReportsLayer) return;
 
     reports.forEach((report) => {
       const isConfirmed = report.status === 'confirmed';
       const isBurning = report.classification === 'open_burning' || report.classification === 'fire';
       const isHighRiskPending = !isConfirmed && (report.confidence || 0) >= 0.70;
 
-      // Custom SVG Marker element
       const el = document.createElement('div');
       el.className = 'custom-map-marker group cursor-pointer';
 
-      // Pulse animation ONLY on unconfirmed/high-risk pins
       const pulseHtml = isHighRiskPending
         ? `<div class="absolute -inset-1.5 rounded-full bg-amber-400/40 animate-ping"></div>`
         : ``;
@@ -159,13 +196,14 @@ export default function LiveMap({ onSelectReport }) {
           <div style="background-color: ${bgColor}; border: 2px solid ${borderColor};" class="w-8 h-8 rounded-full flex items-center justify-center text-white shadow-xl transform transition-transform duration-200 hover:scale-125">
             ${iconSvg}
           </div>
-          <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block bg-slate-900/95 text-white text-[10px] font-mono px-2 py-0.5 rounded shadow-lg whitespace-nowrap z-50">
+          <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block bg-slate-900/95 text-white text-[10px] font-mono px-2 py-0.5 rounded shadow-lg whitespace-nowrap z-50 border border-slate-700">
             #${report.id} • ${report.zone_name || 'Ward'} (${Math.round((report.confidence || 0) * 100)}%)
           </div>
         </div>
       `;
 
       el.addEventListener('click', () => {
+        setSelectedOfficialZone(null);
         setSelectedPin(report);
       });
 
@@ -173,11 +211,66 @@ export default function LiveMap({ onSelectReport }) {
         .setLngLat([report.lng, report.lat])
         .addTo(map.current);
 
-      markersRef.current.push(marker);
+      reportMarkersRef.current.push(marker);
     });
-  }, [reports]);
+  }, [reports, showReportsLayer]);
 
-  // 5. Trigger "Predict Tonight" Heatmap
+  // 6. Update Official CCMC Markers (Layer 1: 🟢 28px #16A34A White Border Checkmark)
+  useEffect(() => {
+    if (!map.current) return;
+
+    // Clear previous official markers
+    officialMarkersRef.current.forEach((m) => m.remove());
+    officialMarkersRef.current = [];
+
+    if (!showOfficialLayer) return;
+
+    officialZones.forEach((zone) => {
+      const el = document.createElement('div');
+      el.className = 'custom-official-marker group cursor-pointer';
+
+      el.innerHTML = `
+        <div class="relative flex items-center justify-center">
+          <div style="background-color: #16A34A; border: 2px solid #FFFFFF;" class="w-7 h-7 rounded-full flex items-center justify-center text-white shadow-lg transform transition-transform duration-200 hover:scale-125">
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+          </div>
+          <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block bg-slate-900/95 text-white text-[10px] font-mono px-2 py-1 rounded shadow-xl whitespace-nowrap z-50 border border-green-500/50">
+            🟢 CCMC C&D: ${zone.name} (Ward ${zone.ward_number || 'CCMC'})
+          </div>
+        </div>
+      `;
+
+      el.addEventListener('click', () => {
+        setSelectedPin(null);
+        setSelectedOfficialZone(zone);
+      });
+
+      const marker = new maplibregl.Marker({ element: el })
+        .setLngLat([zone.lng, zone.lat])
+        .addTo(map.current);
+
+      officialMarkersRef.current.push(marker);
+    });
+  }, [officialZones, showOfficialLayer]);
+
+  // 7. Calculate 500m proximity to Official CCMC Point for Selected Incident (Part 1D)
+  const nearbyOfficialPoint = useMemo(() => {
+    if (!selectedPin || !officialZones.length) return null;
+    let closest = null;
+    let minDistance = Infinity;
+    for (const oz of officialZones) {
+      const dist = haversineDistanceMeters(selectedPin.lat, selectedPin.lng, oz.lat, oz.lng);
+      if (dist <= 500 && dist < minDistance) {
+        minDistance = dist;
+        closest = { ...oz, distanceMeters: Math.round(dist) };
+      }
+    }
+    return closest;
+  }, [selectedPin, officialZones]);
+
+  // 8. Trigger "Predict Tonight" Heatmap
   const togglePredictTonight = async () => {
     const next = !predictTonight;
     setPredictTonight(next);
@@ -202,12 +295,12 @@ export default function LiveMap({ onSelectReport }) {
   return (
     <div className="relative w-full h-[calc(100vh-4rem)] bg-slate-950 flex flex-col overflow-hidden text-slate-100">
       
-      {/* Real "Mass Model" Analytics Strip (Top Surveillance Bar) */}
-      <div className="relative z-20 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 px-4 sm:px-6 py-2.5 flex flex-wrap items-center justify-between gap-4">
+      {/* Real "Mass Model" Analytics & Layer Controls Strip */}
+      <div className="relative z-20 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 px-4 sm:px-6 py-2 flex flex-wrap items-center justify-between gap-3">
         
-        {/* Left: Ward Filter & Active Incident Counter */}
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 bg-slate-800/90 border border-slate-700/80 px-2.5 py-1.5 rounded-element text-xs">
+        {/* Left: Ward Filter & Active Incident Counters */}
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <div className="flex items-center gap-1.5 bg-slate-800/90 border border-slate-700/80 px-2.5 py-1.5 rounded-element text-xs">
             <Filter className="w-3.5 h-3.5 text-accent" />
             <select
               value={selectedZone}
@@ -226,56 +319,72 @@ export default function LiveMap({ onSelectReport }) {
             </select>
           </div>
 
-          <div className="flex items-center gap-2 px-3 py-1 bg-slate-800/60 rounded-element border border-slate-700/50">
+          <div className="flex items-center gap-2 px-2.5 py-1 bg-slate-800/60 rounded-element border border-slate-700/50">
             <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
             <span className="text-xs font-semibold text-slate-200">
-              <strong className="text-white">{totalIncidents}</strong> Active Incidents
+              <strong className="text-white">{totalIncidents}</strong> Incidents
             </span>
           </div>
 
-          <div className="hidden md:flex items-center gap-2 px-3 py-1 bg-slate-800/60 rounded-element border border-slate-700/50">
+          <div className="hidden sm:flex items-center gap-2 px-2.5 py-1 bg-slate-800/60 rounded-element border border-slate-700/50">
             <Activity className="w-3.5 h-3.5 text-status-pending" />
             <span className="text-xs text-slate-300">
-              <strong>{burningCount}</strong> Open Burns
+              <strong>{burningCount}</strong> Burns
             </span>
           </div>
         </div>
 
-        {/* Center: 7-Day Sparkline Trend */}
-        <div className="hidden lg:flex items-center gap-3 px-3 py-1 bg-slate-800/60 rounded-element border border-slate-700/50">
-          <span className="text-[10px] text-slate-400 font-mono uppercase">7-Day Trend:</span>
-          {/* Mini SVG Sparkline */}
-          <svg width="72" height="20" className="overflow-visible">
-            <path
-              d="M 0 14 L 12 11 L 24 16 L 36 8 L 48 12 L 60 5 L 72 7"
-              fill="none"
-              stroke="#0EA5E9"
-              strokeWidth="2"
-              strokeLinecap="round"
-            />
-            <circle cx="72" cy="7" r="3" fill="#0EA5E9" className="animate-pulse" />
-          </svg>
-          <span className="text-[11px] font-bold text-accent">+18% spike</span>
+        {/* Center: Interactive Layer Toggles (Part 1D - Official CCMC vs Citizen Dumps) */}
+        <div className="flex items-center gap-2 bg-slate-950/80 p-1 rounded-element border border-slate-800">
+          {/* Layer 1: Official C&D Collection Points */}
+          <button
+            type="button"
+            onClick={() => setShowOfficialLayer(!showOfficialLayer)}
+            className={`px-2.5 py-1 rounded-element text-xs font-semibold flex items-center gap-1.5 transition-all ${
+              showOfficialLayer
+                ? 'bg-green-600 text-white shadow-sm ring-1 ring-green-400/50'
+                : 'bg-slate-800/80 text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <span className={`w-2 h-2 rounded-full ${showOfficialLayer ? 'bg-white' : 'bg-green-500'}`} />
+            <span>Official C&D ({officialZones.length})</span>
+          </button>
+
+          {/* Layer 2: Illegal Dump Reports */}
+          <button
+            type="button"
+            onClick={() => setShowReportsLayer(!showReportsLayer)}
+            className={`px-2.5 py-1 rounded-element text-xs font-semibold flex items-center gap-1.5 transition-all ${
+              showReportsLayer
+                ? 'bg-red-600 text-white shadow-sm ring-1 ring-red-400/50'
+                : 'bg-slate-800/80 text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <span className={`w-2 h-2 rounded-full ${showReportsLayer ? 'bg-white' : 'bg-red-500'}`} />
+            <span>Illegal Dumps ({reports.length})</span>
+          </button>
+
+          {/* Layer 3: Hotspot Heatmap */}
+          <button
+            type="button"
+            onClick={togglePredictTonight}
+            className={`px-2.5 py-1 rounded-element text-xs font-semibold flex items-center gap-1.5 transition-all ${
+              predictTonight
+                ? 'bg-amber-600 text-white shadow-sm ring-1 ring-amber-400/50'
+                : 'bg-slate-800/80 text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Sparkles className={`w-3 h-3 ${predictTonight ? 'animate-spin text-white' : 'text-amber-400'}`} />
+            <span>Heatmap</span>
+          </button>
         </div>
 
-        {/* Right: Model Confidence Indicator & "Predict Tonight" Button */}
-        <div className="flex items-center gap-3">
-          <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 bg-slate-800/60 rounded-element border border-slate-700/50 text-xs">
+        {/* Right: Model Confidence Indicator */}
+        <div className="hidden lg:flex items-center gap-2">
+          <div className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-800/60 rounded-element border border-slate-700/50 text-xs">
             <span className="text-[10px] text-slate-400">YOLOv8 Conf:</span>
             <span className="font-bold text-status-safe font-mono">{avgConfidence}%</span>
           </div>
-
-          <button
-            onClick={togglePredictTonight}
-            className={`px-3.5 py-1.5 rounded-element text-xs font-bold flex items-center gap-2 shadow-lg transition-all duration-smooth active:scale-95 ${
-              predictTonight
-                ? 'bg-red-600 hover:bg-red-700 text-white ring-2 ring-red-400/50'
-                : 'bg-accent hover:bg-accent-hover text-white'
-            }`}
-          >
-            <Sparkles className={`w-3.5 h-3.5 ${predictTonight ? 'animate-spin' : ''}`} />
-            <span>{predictTonight ? 'Predict Tonight (Active)' : 'Predict Tonight'}</span>
-          </button>
         </div>
 
       </div>
@@ -292,6 +401,19 @@ export default function LiveMap({ onSelectReport }) {
           <div className="absolute top-4 left-4 z-10 bg-slate-900/90 text-slate-200 px-3 py-1.5 rounded-element border border-slate-700 text-xs font-semibold flex items-center gap-2 shadow-lg">
             <span className="w-3.5 h-3.5 border-2 border-accent border-t-transparent rounded-full animate-spin" />
             Loading Coimbatore street pins...
+          </div>
+        )}
+
+        {/* Empty State Overlay (when both layers or reports have 0 pins) */}
+        {!loadingReports && showReportsLayer && reports.length === 0 && (
+          <div className="absolute top-4 left-4 z-10 bg-slate-900/95 backdrop-blur-md border border-slate-700/80 rounded-element p-3 max-w-xs shadow-xl space-y-1">
+            <div className="flex items-center gap-2 text-white text-xs font-bold">
+              <MapPin className="w-3.5 h-3.5 text-accent" />
+              <span>No Active Dump Reports</span>
+            </div>
+            <p className="text-[11px] text-slate-400">
+              Only authentic submitted citizen reports appear here. Showing {officialZones.length} official CCMC collection points.
+            </p>
           </div>
         )}
 
@@ -329,9 +451,9 @@ export default function LiveMap({ onSelectReport }) {
           </div>
         )}
 
-        {/* Pin Inspection Modal / Drawer (Bottom Right) */}
+        {/* Selected Illegal Dump Pin Inspection Modal / Drawer (Bottom Right) */}
         {selectedPin && (
-          <div className="absolute bottom-5 right-4 left-4 sm:left-auto sm:w-88 z-30 bg-slate-900/95 backdrop-blur-md p-4 rounded-card shadow-2xl border border-slate-700 space-y-3 animate-fadeIn text-slate-200">
+          <div className="absolute bottom-5 right-4 left-4 sm:left-auto sm:w-92 z-30 bg-slate-900/95 backdrop-blur-md p-4 rounded-card shadow-2xl border border-slate-700 space-y-3 animate-fadeIn text-slate-200">
             <div className="flex items-center justify-between border-b border-slate-800 pb-2">
               <div className="flex items-center gap-1.5">
                 <span className="font-bold text-sm text-white">Incident #{selectedPin.id}</span>
@@ -344,6 +466,19 @@ export default function LiveMap({ onSelectReport }) {
                 ✕
               </button>
             </div>
+
+            {/* 500m Proximity Alert Banner (Part 1D) */}
+            {nearbyOfficialPoint && (
+              <div className="p-3 rounded-element bg-amber-950/90 border border-amber-500/80 text-amber-200 text-xs space-y-1 shadow-md">
+                <div className="flex items-center gap-1.5 font-bold text-amber-300">
+                  <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                  <span>PROXIMITY WARNING ({nearbyOfficialPoint.distanceMeters}m)</span>
+                </div>
+                <p className="text-[11px] leading-relaxed text-amber-100">
+                  ⚠️ Illegal dump within <strong className="text-white">{nearbyOfficialPoint.distanceMeters}m</strong> of official C&D collection point: <strong className="text-white">{nearbyOfficialPoint.name}</strong> (Ward {nearbyOfficialPoint.ward_number}). Indicates public awareness failure or collection capacity issue.
+                </p>
+              </div>
+            )}
 
             {/* Thumbnail */}
             <div className="relative h-32 rounded-element overflow-hidden bg-black border border-slate-800">
@@ -379,19 +514,64 @@ export default function LiveMap({ onSelectReport }) {
           </div>
         )}
 
-        {/* Status Legend (Bottom Right on Desktop) */}
-        <div className="absolute bottom-5 right-4 hidden lg:flex items-center gap-4 bg-slate-900/90 backdrop-blur-md px-3.5 py-2 rounded-element border border-slate-800 text-xs font-medium z-20">
-          <div className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-full bg-status-confirmed border border-red-400" />
-            <span className="text-slate-300">Confirmed</span>
+        {/* Selected Official CCMC Zone Inspection Modal / Drawer (Part 1D) */}
+        {selectedOfficialZone && (
+          <div className="absolute bottom-5 right-4 left-4 sm:left-auto sm:w-92 z-30 bg-slate-900/95 backdrop-blur-md p-4 rounded-card shadow-2xl border border-green-500/60 space-y-3 animate-fadeIn text-slate-200">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded-full bg-[#16A34A] border border-white flex items-center justify-center">
+                  <Check className="w-3.5 h-3.5 text-white" />
+                </div>
+                <span className="font-bold text-sm text-white">Official CCMC Point</span>
+              </div>
+              <button
+                onClick={() => setSelectedOfficialZone(null)}
+                className="text-slate-400 hover:text-white text-xs font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div>
+              <h4 className="font-bold text-base text-white">{selectedOfficialZone.name}</h4>
+              <span className="inline-block mt-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-green-950/80 text-green-300 border border-green-700/60">
+                Ward {selectedOfficialZone.ward_number || 'CCMC'} • Active Designated Facility
+              </span>
+            </div>
+
+            <div className="bg-slate-800/80 p-2.5 rounded-element border border-slate-700/80 text-xs space-y-1">
+              <span className="text-[10px] text-slate-400 uppercase font-mono block">Designated Address</span>
+              <p className="text-slate-200 text-xs">{selectedOfficialZone.full_address}</p>
+            </div>
+
+            <div className="bg-sky-950/40 border border-sky-800/60 p-2 rounded-element text-[11px] text-sky-200">
+              ✓ Authorized by Coimbatore City Municipal Corporation Commissioner Annexure for Construction & Demolition waste disposal.
+            </div>
           </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-full bg-status-pending border border-amber-300 animate-pulse" />
-            <span className="text-slate-300">Unverified (Pending)</span>
+        )}
+
+        {/* Map Intelligence Legend (Bottom Right on Desktop) (Part 1D) */}
+        <div className="absolute bottom-5 right-4 hidden lg:flex flex-col gap-1.5 bg-slate-900/95 backdrop-blur-md px-3.5 py-2.5 rounded-element border border-slate-700/80 text-xs shadow-xl z-20">
+          <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400 border-b border-slate-800 pb-1 flex items-center justify-between gap-4">
+            <span>Map Intelligence Layers</span>
+            <span className="text-[9px] text-accent font-mono font-semibold">CCMC Grid</span>
           </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-full bg-status-safe border border-green-400" />
-            <span className="text-slate-300">Safe / Clear</span>
+          <div className="flex items-center gap-4 pt-1">
+            <div className="flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded-full bg-[#16A34A] border-2 border-white shadow-xs" />
+              <span className="text-slate-200 font-medium">Official C&D Point</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded-full bg-status-confirmed border border-red-400" />
+              <span className="text-slate-300">Illegal Dump</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded-full bg-status-pending border border-amber-300 animate-pulse" />
+              <span className="text-slate-300">Unverified</span>
+            </div>
+          </div>
+          <div className="text-[9px] text-slate-400 font-mono pt-0.5 border-t border-slate-800/80">
+            Source: CCMC Commissioner Annexure · Sept 2026
           </div>
         </div>
 

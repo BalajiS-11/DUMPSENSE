@@ -37,6 +37,25 @@ class ZoneOut(BaseModel):
     id: int
     name: str
     boundary: Optional[str] = None
+    zone_type: Optional[str] = "monitored_area"
+    ward_number: Optional[int] = None
+    full_address: Optional[str] = None
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    is_official_ccmc: Optional[bool] = False
+
+    class Config:
+        from_attributes = True
+
+class OfficialZoneOut(BaseModel):
+    id: int
+    name: str
+    zone_type: str = "official_cd_point"
+    ward_number: Optional[int] = None
+    full_address: Optional[str] = None
+    lat: float
+    lng: float
+    is_official_ccmc: bool = True
 
     class Config:
         from_attributes = True
@@ -48,7 +67,8 @@ class DetectionBox(BaseModel):
 
 class ClassifyResult(BaseModel):
     classification: str  # waste_pile | open_burning | clean
-    confidence: float
+    confidence: Optional[float] = None
+    no_detection: bool = False
     detections: List[DetectionBox] = []
     annotated_url: Optional[str] = None
 
@@ -66,11 +86,36 @@ class ReportOut(BaseModel):
     confidence: Optional[float] = None
     status: str
     rejection_reason: Optional[str] = None
+    description: Optional[str] = None
+    citizen_classification: Optional[str] = None
+    estimated_size: Optional[str] = None
+    is_anonymous: bool = False
+    severity_boost: int = 0
+    reporter_name: Optional[str] = None
     created_at: datetime
     reporter_trust_score: Optional[int] = None
 
     class Config:
         from_attributes = True
+
+class TimelineEntryOut(BaseModel):
+    id: int
+    report_id: int
+    stage: str
+    note: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class ShareCardOut(BaseModel):
+    report_id: int
+    classification: str
+    confidence: Optional[int] = None
+    zone_name: str
+    created_at: datetime
+    status: str
+    share_text: str
 
 class ReportVerifyRequest(BaseModel):
     action: str  # confirm | reject

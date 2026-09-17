@@ -8,3 +8,12 @@ createRoot(document.getElementById('root')).render(
     <App />
   </StrictMode>,
 )
+
+// Register PWA Service Worker (Part 2A)
+if ('serviceWorker' in navigator && !window.location.host.includes('playwright')) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch((err) => {
+      console.warn('[SW] ServiceWorker registration error:', err);
+    });
+  });
+}

@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { reportsApi, getImageUrl } from '../api';
 import { StatusBadge, ConfidenceBadge, TrustScoreChip } from '../components/Badges';
+import LiveMap from './LiveMap';
 
 export default function OfficerDashboard({ onSelectReport }) {
   const [reports, setReports] = useState([]);
@@ -157,6 +158,20 @@ export default function OfficerDashboard({ onSelectReport }) {
           <span>{toastMessage.text}</span>
         </div>
       )}
+
+      {/* Live Geospatial Surveillance Map (Part 2D: full map strictly for officers) */}
+      <div className="bg-slate-900 rounded-card overflow-hidden border border-slate-700/80 shadow-xl">
+        <div className="bg-slate-950 px-4 py-2.5 border-b border-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+            <span className="text-xs font-bold text-white tracking-wide uppercase">Coimbatore Tactical Surveillance Map</span>
+          </div>
+          <span className="text-[11px] text-slate-400">Live WebSockets Feed • Citywide</span>
+        </div>
+        <div className="h-[460px] sm:h-[500px] w-full relative">
+          <LiveMap onSelectReport={onSelectReport} />
+        </div>
+      </div>
 
       {/* Filter and Search Bar */}
       <div className="bg-white p-4 rounded-card border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-3">
@@ -356,11 +371,36 @@ export default function OfficerDashboard({ onSelectReport }) {
         {/* AI Detection */}
         <td className="py-2.5 px-4">
           <ConfidenceBadge classification={report.classification} confidence={report.confidence} />
+          {report.citizen_classification && (
+            <div className="text-[10px] text-slate-500 mt-0.5">
+              Citizen: <span className="font-semibold text-slate-700">{report.citizen_classification}</span>
+            </div>
+          )}
+          {report.severity_boost > 0 && (
+            <span className="inline-block mt-0.5 px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 font-mono text-[9px] font-bold">
+              ⚡ Boost +{report.severity_boost}
+            </span>
+          )}
         </td>
 
-        {/* Citizen Trust */}
+        {/* Citizen Trust & Reporter Info */}
         <td className="py-2.5 px-4">
-          <TrustScoreChip score={report.reporter_trust_score ?? 10} />
+          <div className="space-y-1">
+            <span className="text-[11px] font-semibold text-slate-800 block">
+              {report.reporter_name || 'Citizen'}
+            </span>
+            <TrustScoreChip score={report.reporter_trust_score ?? 10} />
+            {report.estimated_size && (
+              <span className="text-[10px] text-slate-500 block">
+                Size: {report.estimated_size}
+              </span>
+            )}
+            {report.description && (
+              <p className="text-[10px] text-slate-500 italic max-w-xs line-clamp-1">
+                "{report.description}"
+              </p>
+            )}
+          </div>
         </td>
 
         {/* Status */}

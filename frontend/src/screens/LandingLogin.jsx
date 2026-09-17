@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
-import { Flame, Shield, ArrowRight, Lock, Mail, Activity, Eye, AlertTriangle } from 'lucide-react';
+import { Flame, Shield, ArrowRight, Lock, Mail, Activity, AlertTriangle } from 'lucide-react';
 import { authApi } from '../api';
+import { useLanguage } from '../context/LanguageContext';
 
-export default function LandingLogin({ onLoginSuccess, onExploreMap }) {
+export default function LandingLogin({ onLoginSuccess }) {
+  const { t } = useLanguage();
   const [isRegister, setIsRegister] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -83,37 +85,35 @@ export default function LandingLogin({ onLoginSuccess, onExploreMap }) {
             </h1>
           </div>
 
-          {/* Single bold sentence max 15 words */}
+          {/* Single bold sentence */}
           <p className="text-lg sm:text-xl font-semibold text-slate-800 leading-snug">
-            Real-time AI surveillance eliminating illegal open burning and unmonitored dumping across Coimbatore.
+            {t('landing_headline')} Coimbatore.
           </p>
 
           {/* 3 Metric Cards */}
           <div className="grid grid-cols-3 gap-3 pt-2 max-w-lg">
             <div className="bg-white/95 backdrop-blur-sm p-4 rounded-card border border-slate-200 shadow-sm">
-              <span className="text-[11px] text-slate-500 font-medium block">Daily Waste</span>
+              <span className="text-[11px] text-slate-500 font-medium block">{t('landing_stat1')}</span>
               <span className="text-2xl font-black text-slate-800">1,293 T</span>
             </div>
             <div className="bg-white/95 backdrop-blur-sm p-4 rounded-card border border-slate-200 shadow-sm">
-              <span className="text-[11px] text-slate-500 font-medium block">Plant Capacity</span>
+              <span className="text-[11px] text-slate-500 font-medium block">{t('landing_stat2')}</span>
               <span className="text-2xl font-black text-status-safe">1,164 T</span>
             </div>
             <div className="bg-white/95 backdrop-blur-sm p-4 rounded-card border border-red-200 shadow-sm bg-red-50/30">
-              <span className="text-[11px] text-red-600 font-medium block">Daily Deficit</span>
+              <span className="text-[11px] text-red-600 font-medium block">{t('landing_stat3')}</span>
               <span className="text-2xl font-black text-status-confirmed">129 T/day</span>
             </div>
           </div>
 
-          {/* Quick Direct Map CTA */}
-          <div className="flex items-center gap-4 pt-1">
-            <button
-              onClick={onExploreMap}
-              className="inline-flex items-center gap-2 px-6 py-3 rounded-element bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold shadow-md transition-all duration-smooth active:scale-95"
-            >
-              <Eye className="w-4 h-4 text-accent" />
-              Explore Live Surveillance Map
-            </button>
-            <span className="text-xs text-slate-500">Public verified live feed</span>
+          {/* Credibility Strip (Part 1E) */}
+          <div className="pt-2">
+            <div className="inline-flex items-center gap-2 px-3.5 py-2 rounded-element bg-slate-900/90 text-slate-200 border border-slate-700/80 text-xs shadow-sm">
+              <span className="text-accent font-bold">📋 Data Sources:</span>
+              <span className="text-slate-300 font-normal">
+                CCMC Commissioner Annexure (Official) · NGT Ruling Sept 2026 · Citizen Reports (Real-time)
+              </span>
+            </div>
           </div>
 
         </div>

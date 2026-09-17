@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
-from app.routers import auth, classify, reports, predict, ws
+from app.routers import auth, classify, reports, predict, ws, zones
 
 app = FastAPI(
     title="DumpSense AI API",
@@ -36,6 +36,7 @@ app.include_router(classify.router)
 app.include_router(reports.router)
 app.include_router(predict.router)
 app.include_router(ws.router)
+app.include_router(zones.router)
 
 @app.get("/health")
 def health_check():

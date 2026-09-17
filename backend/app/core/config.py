@@ -16,11 +16,17 @@ class Settings(BaseSettings):
     BASE_DIR: Path = Path(__file__).resolve().parent.parent.parent
     UPLOAD_DIR: Path = BASE_DIR / "uploads"
     _ROOT_DIR: Path = Path(__file__).resolve().parent.parent.parent.parent
-    MODEL_PATH: Path = (
+    FIRE_MODEL_PATH: Path = (
         _ROOT_DIR / "MODEL" / "best.pt"
         if (_ROOT_DIR / "MODEL" / "best.pt").exists()
         else (_ROOT_DIR / "FireDetection" / "best.pt")
     )
+    WASTE_MODEL_PATH: Path = (
+        _ROOT_DIR / "MODEL" / "best2.pt"
+        if (_ROOT_DIR / "MODEL" / "best2.pt").exists()
+        else (_ROOT_DIR / "FireDetection" / "best2.pt")
+    )
+    MODEL_PATH: Path = FIRE_MODEL_PATH
 
     class Config:
         case_sensitive = True

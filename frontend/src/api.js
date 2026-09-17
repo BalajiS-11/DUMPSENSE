@@ -65,12 +65,31 @@ export const reportsApi = {
       rejection_reason,
     });
     return res.data;
+  },
+  getTimeline: async (id) => {
+    const res = await api.get(`/reports/${id}/timeline`);
+    return res.data;
+  },
+  getShareCard: async (id) => {
+    const res = await api.get(`/reports/${id}/share-card`);
+    return res.data;
   }
 };
 
 export const predictApi = {
   getHotspots: async () => {
     const res = await api.get('/predict-hotspots');
+    return res.data;
+  }
+};
+
+export const zonesApi = {
+  getOfficialZones: async () => {
+    const res = await api.get('/zones/official');
+    return res.data;
+  },
+  getAllZones: async () => {
+    const res = await api.get('/zones');
     return res.data;
   }
 };
