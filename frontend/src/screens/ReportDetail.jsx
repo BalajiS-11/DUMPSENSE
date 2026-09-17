@@ -11,15 +11,19 @@ import {
   AlertTriangle, 
   Clock, 
   FileCheck,
-  UserCheck
+  UserCheck,
+  FileDown
 } from 'lucide-react';
 import { reportsApi, getImageUrl } from '../api';
 import { StatusBadge, ConfidenceBadge, TrustScoreChip } from '../components/Badges';
+import { useLanguage } from '../context/LanguageContext';
 
 export default function ReportDetail({ reportId, onBack, currentUser, onReportUpdated }) {
+  const { t, lang } = useLanguage();
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(true);
   const [verifying, setVerifying] = useState(false);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [actionError, setActionError] = useState(null);
 
   const fetchDetail = async () => {
@@ -37,6 +41,18 @@ export default function ReportDetail({ reportId, onBack, currentUser, onReportUp
   useEffect(() => {
     if (reportId) fetchDetail();
   }, [reportId]);
+
+  const handleDownloadPdf = async () => {
+    try {
+      setDownloadingPdf(true);
+      await reportsApi.downloadReportPdf(report.id);
+    } catch (err) {
+      console.error('Failed to download PDF:', err);
+      alert('Failed to generate PDF dossier');
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
 
   const handleVerify = async (action) => {
     setVerifying(true);
@@ -104,27 +120,43 @@ export default function ReportDetail({ reportId, onBack, currentUser, onReportUp
           </div>
         </div>
 
-        {/* Officer Action Bar */}
-        {currentUser?.role === 'officer' && (
-          <div className="flex items-center gap-2">
-            <button
-              disabled={verifying || report.status === 'confirmed'}
-              onClick={() => handleVerify('confirm')}
-              className="px-4 py-2 rounded-element text-xs font-semibold bg-status-confirmed hover:bg-red-700 text-white shadow-sm flex items-center gap-1.5 transition-colors disabled:opacity-40"
-            >
-              <CheckCircle className="w-3.5 h-3.5" />
-              Confirm Violation (+2 Trust)
-            </button>
-            <button
-              disabled={verifying || report.status === 'rejected'}
-              onClick={() => handleVerify('reject')}
-              className="px-4 py-2 rounded-element text-xs font-semibold bg-slate-800 hover:bg-slate-900 text-white shadow-sm flex items-center gap-1.5 transition-colors disabled:opacity-40"
-            >
-              <XCircle className="w-3.5 h-3.5" />
-              Reject Violation (-5 Trust)
-            </button>
-          </div>
-        )}
+        {/* Action Buttons: PDF Dossier + Officer Verification */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            disabled={downloadingPdf}
+            onClick={handleDownloadPdf}
+            className="px-3.5 py-2 rounded-element text-xs font-semibold bg-slate-900 hover:bg-slate-800 text-white shadow-sm flex items-center gap-1.5 transition-colors disabled:opacity-50"
+            title={t('btn_download_pdf')}
+          >
+            {downloadingPdf ? (
+              <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <FileDown className="w-3.5 h-3.5 text-rose-400" />
+            )}
+            <span>{t('btn_download_pdf')}</span>
+          </button>
+
+          {currentUser?.role === 'officer' && (
+            <>
+              <button
+                disabled={verifying || report.status === 'confirmed'}
+                onClick={() => handleVerify('confirm')}
+                className="px-4 py-2 rounded-element text-xs font-semibold bg-status-confirmed hover:bg-red-700 text-white shadow-sm flex items-center gap-1.5 transition-colors disabled:opacity-40"
+              >
+                <CheckCircle className="w-3.5 h-3.5" />
+                {t('officer_confirm')} (+2 Trust)
+              </button>
+              <button
+                disabled={verifying || report.status === 'rejected'}
+                onClick={() => handleVerify('reject')}
+                className="px-4 py-2 rounded-element text-xs font-semibold bg-slate-800 hover:bg-slate-900 text-white shadow-sm flex items-center gap-1.5 transition-colors disabled:opacity-40"
+              >
+                <XCircle className="w-3.5 h-3.5" />
+                {t('officer_reject')} (-5 Trust)
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {actionError && (

@@ -186,7 +186,11 @@ export default function UploadReport({ onReportSuccess }) {
       }
       setUploadError(null);
       
-      const response = await fetch('/test_image.webp');
+      const samplePath = sampleType === 'waste' ? '/samples/waste_sample.jpg' : '/test_image.webp';
+      const fileExt = sampleType === 'waste' ? 'jpg' : 'webp';
+      const mimeType = sampleType === 'waste' ? 'image/jpeg' : 'image/webp';
+      
+      const response = await fetch(samplePath);
       let blob;
       if (response.ok) {
         blob = await response.blob();
@@ -203,7 +207,7 @@ export default function UploadReport({ onReportSuccess }) {
         blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg'));
       }
       
-      const file = new File([blob], `${sampleType}_sample.webp`, { type: 'image/webp' });
+      const file = new File([blob], `${sampleType}_sample.${fileExt}`, { type: mimeType });
       setCitizenClassification(sampleType === 'fire' ? 'Open Burning 🔥' : 'Waste Pile 🗑️');
       await processImageFile(file);
     } catch (err) {
@@ -470,13 +474,13 @@ export default function UploadReport({ onReportSuccess }) {
             {/* Waste Type Selector (Radio / Segmented Control, Required - Part 7) */}
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                Waste Type Observed <span className="text-red-500">*</span>
+                {t('report_waste_type_label')} <span className="text-red-500">*</span>
               </label>
               <div className="grid grid-cols-3 gap-2">
                 {[
-                  { id: 'Open Burning 🔥', label: 'Open Burning 🔥' },
-                  { id: 'Waste Pile 🗑️', label: 'Waste Pile 🗑️' },
-                  { id: 'Both', label: 'Both' }
+                  { id: 'Open Burning 🔥', label: lang === 'ta' ? 'திறந்தவெளி எரிப்பு 🔥' : 'Open Burning 🔥' },
+                  { id: 'Waste Pile 🗑️', label: lang === 'ta' ? 'கழிவு குவியல் 🗑️' : 'Waste Pile 🗑️' },
+                  { id: 'Both', label: lang === 'ta' ? 'இரண்டும்' : 'Both' }
                 ].map((type) => (
                   <button
                     key={type.id}
@@ -498,7 +502,7 @@ export default function UploadReport({ onReportSuccess }) {
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="block text-xs font-semibold text-slate-700">
-                  Describe what you see (optional)
+                  {t('report_description_label')}
                 </label>
                 <span className="text-[11px] font-mono text-slate-400">
                   {description.length} / 200
@@ -509,28 +513,28 @@ export default function UploadReport({ onReportSuccess }) {
                 rows={3}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="e.g., Toxic burning near Singanallur hospital overnight..."
+                placeholder={lang === 'ta' ? 'எ.கா., சிங்கநல்லூர் அருகே இரவு நேரத்தில் குப்பை எரிப்பு...' : 'e.g., Toxic burning near Singanallur hospital overnight...'}
                 className="w-full p-2.5 text-xs rounded-element border border-slate-300 focus:border-accent focus:ring-1 focus:ring-accent resize-none"
               />
               <span className="text-[10px] text-slate-400 block mt-0.5">
-                Keywords like "hospital", "overnight", "chemical", "school" automatically apply an emergency severity boost.
+                {lang === 'ta' ? 'மருத்துவமனை, பள்ளி, வேதிப்பொருள் போன்ற முக்கிய வார்த்தைகள் முன்னுரிமை அதிகரிக்கும்.' : 'Keywords like "hospital", "overnight", "chemical", "school" automatically apply an emergency severity boost.'}
               </span>
             </div>
 
             {/* Estimated Size Dropdown (Optional - Part 7) */}
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                Estimated Size (optional)
+                {t('report_size_label')}
               </label>
               <select
                 value={estimatedSize}
                 onChange={(e) => setEstimatedSize(e.target.value)}
                 className="w-full px-3 py-2 text-xs rounded-element border border-slate-300 focus:border-accent"
               >
-                <option value="">Select size estimation...</option>
-                <option value="Small (under 1m²)">Small (under 1m²)</option>
-                <option value="Medium (1–5m²)">Medium (1–5m²)</option>
-                <option value="Large (over 5m²)">Large (over 5m²)</option>
+                <option value="">{lang === 'ta' ? 'அளவு மதிப்பீட்டைத் தேர்ந்தெடுக்கவும்...' : 'Select size estimation...'}</option>
+                <option value="Small (under 1m²)">{lang === 'ta' ? 'சிறியது (1 மீ² கீழ்)' : 'Small (under 1m²)'}</option>
+                <option value="Medium (1–5m²)">{lang === 'ta' ? 'நடுத்தரம் (1–5 மீ²)' : 'Medium (1–5m²)'}</option>
+                <option value="Large (over 5m²)">{lang === 'ta' ? 'பெரியது (5 மீ² மேல்)' : 'Large (over 5m²)'}</option>
               </select>
             </div>
 
@@ -544,7 +548,7 @@ export default function UploadReport({ onReportSuccess }) {
                 className="w-4 h-4 rounded text-accent focus:ring-accent border-slate-300 cursor-pointer"
               />
               <label htmlFor="anon_check" className="text-xs text-slate-700 font-medium cursor-pointer">
-                I am anonymous (hide my name on officer dashboard)
+                {t('report_anonymous_label')}
               </label>
             </div>
 
@@ -568,7 +572,7 @@ export default function UploadReport({ onReportSuccess }) {
                 <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
               ) : !isOnline ? (
                 <>
-                  <span>💾 Save Report Offline</span>
+                  <span>💾 {lang === 'ta' ? 'ஆஃப்லைனில் சேமி' : 'Save Report Offline'}</span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               ) : (
@@ -583,7 +587,7 @@ export default function UploadReport({ onReportSuccess }) {
         </div>
 
         {/* Right Column: GPS Geolocation & Fast Testing Guide (5 cols) */}
-        <div className="lg:col-span-5 space-y-6">
+        <div className="lg:col-span-5 space-y-5">
           
           {/* GPS Card */}
           <div className="bg-white p-5 rounded-card border border-slate-200 shadow-sm space-y-3">
@@ -613,14 +617,29 @@ export default function UploadReport({ onReportSuccess }) {
             </div>
 
             <p className="text-[11px] text-slate-500 leading-relaxed">
-              GPS coordinates are verified against Coimbatore Municipal Corporation boundary polygons. Out-of-bounds coords are flagged.
+              {lang === 'ta'
+                ? 'கோயம்புத்தூர் மாநகராட்சி எல்லைக்குள் GPS ஆயத்தொலைவுகள் தானாக சரிபார்க்கப்படுகின்றன.'
+                : 'GPS coordinates are verified against Coimbatore Municipal Corporation boundary polygons. Out-of-bounds coords are flagged.'}
             </p>
+          </div>
+
+          {/* Real-time Ingestion Rules Card */}
+          <div className="bg-white p-4 rounded-card border border-slate-200 shadow-sm space-y-2.5">
+            <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+              <ShieldCheck className="w-4 h-4 text-accent" />
+              {t('report_rules_title')}
+            </span>
+            <ul className="text-[11px] text-slate-600 space-y-1.5 list-disc list-inside leading-relaxed">
+              <li>{t('report_rule_1')}</li>
+              <li>{t('report_rule_2')}</li>
+              <li>{t('report_rule_3')}</li>
+            </ul>
           </div>
 
           {/* Quick Test Demo Samples for Judges */}
           <div className="bg-slate-50 p-4 rounded-card border border-slate-200 space-y-3">
             <span className="text-[10px] font-bold tracking-wider text-slate-500 uppercase block">
-              ⚡ QUICK SAMPLES (FOR EXPO DEMO)
+              ⚡ {t('report_expo_label')}
             </span>
             <div className="grid grid-cols-2 gap-2">
               <button
@@ -630,9 +649,9 @@ export default function UploadReport({ onReportSuccess }) {
               >
                 <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                   <Flame className="w-3.5 h-3.5 text-red-600" />
-                  Fire Sample
+                  {t('report_fire_sample')}
                 </span>
-                <span className="text-[10px] text-slate-400 block mt-0.5">Loads test fire image</span>
+                <span className="text-[10px] text-slate-400 block mt-0.5">{t('report_fire_sample_sub')}</span>
               </button>
 
               <button
@@ -642,9 +661,9 @@ export default function UploadReport({ onReportSuccess }) {
               >
                 <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                   <Trash2 className="w-3.5 h-3.5 text-amber-600" />
-                  Waste Sample
+                  {t('report_waste_sample')}
                 </span>
-                <span className="text-[10px] text-slate-400 block mt-0.5">Loads test waste image</span>
+                <span className="text-[10px] text-slate-400 block mt-0.5">{t('report_waste_sample_sub')}</span>
               </button>
             </div>
           </div>

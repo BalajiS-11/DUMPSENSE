@@ -109,9 +109,9 @@ export default function LandingLogin({ onLoginSuccess }) {
           {/* Credibility Strip (Part 1E) */}
           <div className="pt-2">
             <div className="inline-flex items-center gap-2 px-3.5 py-2 rounded-element bg-slate-900/90 text-slate-200 border border-slate-700/80 text-xs shadow-sm">
-              <span className="text-accent font-bold">📋 Data Sources:</span>
+              <span className="text-accent font-bold">📋 {lang === 'ta' ? 'தரவு ஆதாரங்கள்:' : 'Data Sources:'}</span>
               <span className="text-slate-300 font-normal">
-                CCMC Commissioner Annexure (Official) · NGT Ruling Sept 2026 · Citizen Reports (Real-time)
+                {t('landing_credibility')}
               </span>
             </div>
           </div>
@@ -126,10 +126,10 @@ export default function LandingLogin({ onLoginSuccess }) {
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
                 <h2 className="text-lg font-bold text-slate-900">
-                  {isRegister ? 'Register Citizen Account' : 'Portal Access'}
+                  {isRegister ? (lang === 'ta' ? 'குடிமகன் பதிவு' : 'Register Citizen Account') : (lang === 'ta' ? 'உள்நுழைவு தளம்' : 'Portal Access')}
                 </h2>
                 <p className="text-xs text-slate-500">
-                  {isRegister ? 'Join Coimbatore citizen reporter grid' : 'Sign in as Citizen Reporter or Ward Officer'}
+                  {isRegister ? (lang === 'ta' ? 'கோவை குடிமக்கள் கண்காணிப்பு அமைப்பில் இணையுங்கள்' : 'Join Coimbatore citizen reporter grid') : (lang === 'ta' ? 'குடிமகன் அல்லது வார்டு அதிகாரியாக உள்நுழையவும்' : 'Sign in as Citizen Reporter or Ward Officer')}
                 </p>
               </div>
               <div className="w-9 h-9 rounded-element bg-slate-100 flex items-center justify-center text-slate-700">
@@ -140,7 +140,7 @@ export default function LandingLogin({ onLoginSuccess }) {
             {/* Fast-Track Demo Switcher for Judges */}
             <div className="bg-slate-50 p-3 rounded-card border border-slate-200 space-y-2">
               <span className="text-[10px] font-bold tracking-wider text-slate-500 uppercase block">
-                ⚡ EXPO FAST-TRACK (FOR JUDGES)
+                ⚡ {lang === 'ta' ? 'விரைவு சோதனை (நடுவர்களுக்கானது)' : 'EXPO FAST-TRACK (FOR JUDGES)'}
               </span>
               <div className="grid grid-cols-2 gap-2">
                 <button
@@ -150,7 +150,7 @@ export default function LandingLogin({ onLoginSuccess }) {
                   className="px-3 py-2 rounded-element text-xs font-semibold bg-white hover:bg-slate-100 text-slate-800 border border-slate-200 shadow-xs flex items-center justify-center gap-1.5 transition-all duration-smooth active:scale-95"
                 >
                   <Flame className="w-3.5 h-3.5 text-status-pending" />
-                  Citizen Profile
+                  {lang === 'ta' ? 'குடிமகன்' : 'Citizen Profile'}
                 </button>
                 <button
                   type="button"
@@ -159,7 +159,7 @@ export default function LandingLogin({ onLoginSuccess }) {
                   className="px-3 py-2 rounded-element text-xs font-semibold bg-white hover:bg-slate-100 text-slate-800 border border-slate-200 shadow-xs flex items-center justify-center gap-1.5 transition-all duration-smooth active:scale-95"
                 >
                   <Shield className="w-3.5 h-3.5 text-accent" />
-                  Officer Profile
+                  {lang === 'ta' ? 'அதிகாரி' : 'Officer Profile'}
                 </button>
               </div>
             </div>
@@ -227,7 +227,11 @@ export default function LandingLogin({ onLoginSuccess }) {
                   <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                 ) : (
                   <>
-                    <span>{isRegister ? 'Create Account' : 'Sign In'}</span>
+                    <span>
+                      {isRegister 
+                        ? (lang === 'ta' ? 'கணக்கை உருவாக்கவும்' : 'Create Account') 
+                        : (lang === 'ta' ? 'உள்நுழைக' : 'Sign In')}
+                    </span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </>
                 )}
@@ -243,7 +247,9 @@ export default function LandingLogin({ onLoginSuccess }) {
                 }}
                 className="text-xs text-accent hover:underline font-medium"
               >
-                {isRegister ? 'Already have an account? Sign in' : "New user? Register as citizen"}
+                {isRegister 
+                  ? (lang === 'ta' ? 'ஏற்கனவே கணக்கு உள்ளதா? உள்நுழைக' : 'Already have an account? Sign in') 
+                  : (lang === 'ta' ? 'புதிய பயனரா? குடிமகனாகப் பதிவு செய்க' : 'New user? Register as citizen')}
               </button>
             </div>
 

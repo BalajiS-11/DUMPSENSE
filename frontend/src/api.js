@@ -73,6 +73,20 @@ export const reportsApi = {
   getShareCard: async (id) => {
     const res = await api.get(`/reports/${id}/share-card`);
     return res.data;
+  },
+  downloadReportPdf: async (id) => {
+    const res = await api.get(`/reports/${id}/pdf`, {
+      responseType: 'blob',
+    });
+    const blob = new Blob([res.data], { type: 'application/pdf' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `DumpSense_Enforcement_DS-2026-${String(id).padStart(5, '0')}.pdf`);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
   }
 };
 

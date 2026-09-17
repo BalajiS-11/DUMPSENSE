@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { Flame, PlusCircle, ShieldAlert, FileText, LogOut, Languages } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 
@@ -119,7 +119,7 @@ export default function Navbar({ activeScreen, setActiveScreen, currentUser, onL
               onClick={() => setActiveScreen('landing')}
               className="px-3.5 py-1.5 rounded-element text-xs font-semibold bg-accent text-white hover:bg-accent-hover transition-colors shadow-sm"
             >
-              Sign In
+              {t('nav_login')}
             </button>
           )}
         </div>

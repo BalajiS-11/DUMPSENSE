@@ -17,7 +17,12 @@ import {
   Inbox,
   UploadCloud,
   Wifi,
-  WifiOff
+  WifiOff,
+  FileDown,
+  Cpu,
+  Flame,
+  Trash2,
+  ExternalLink
 } from 'lucide-react';
 import { reportsApi, getImageUrl } from '../api';
 import { StatusBadge, ConfidenceBadge } from '../components/Badges';
@@ -38,6 +43,7 @@ export default function MyReports({ currentUser, justSubmittedId, onNavigateRepo
   const [selectedReportForTimeline, setSelectedReportForTimeline] = useState(null);
   const [timelineEntries, setTimelineEntries] = useState([]);
   const [loadingTimeline, setLoadingTimeline] = useState(false);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [toastMessage, setToastMessage] = useState(null);
   const [highlightId, setHighlightId] = useState(justSubmittedId);
 
@@ -169,6 +175,41 @@ export default function MyReports({ currentUser, justSubmittedId, onNavigateRepo
       setTimeout(() => setToastMessage(null), 2000);
     } catch (err) {
       console.error('Copy failed:', err);
+    }
+  };
+
+  const handleDownloadPdf = async (reportId) => {
+    try {
+      setDownloadingPdf(true);
+      await reportsApi.downloadReportPdf(reportId);
+      setToastMessage(lang === 'ta' ? 'PDF ஆவணம் பதிவிறக்கப்பட்டது!' : 'PDF Dossier downloaded successfully!');
+      setTimeout(() => setToastMessage(null), 3000);
+    } catch (err) {
+      console.error('Failed to download PDF:', err);
+      alert(lang === 'ta' ? 'PDF பதிவிறக்கம் தோல்வியடைந்தது.' : 'Failed to download official PDF dossier.');
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
+
+  const handleCopyReportLink = async (reportId) => {
+    try {
+      const url = `${window.location.origin}/report/${reportId}`;
+      await navigator.clipboard.writeText(url);
+      setToastMessage(t('btn_copied') || 'Link copied!');
+      setTimeout(() => setToastMessage(null), 2500);
+    } catch (err) {
+      console.error('Copy link failed:', err);
+    }
+  };
+
+  const handleCopyCoords = async (lat, lng) => {
+    try {
+      await navigator.clipboard.writeText(`${lat.toFixed(6)}, ${lng.toFixed(6)}`);
+      setToastMessage(lang === 'ta' ? 'ஆயத்தொலைவுகள் நகலெடுக்கப்பட்டது!' : 'GPS Coordinates copied!');
+      setTimeout(() => setToastMessage(null), 2000);
+    } catch (err) {
+      console.error('Copy coords failed:', err);
     }
   };
 
@@ -439,115 +480,345 @@ export default function MyReports({ currentUser, justSubmittedId, onNavigateRepo
         </div>
       )}
 
-      {/* Timeline Modal / Drawer */}
-      {selectedReportForTimeline && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="bg-white rounded-card max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
-            {/* Modal Header */}
-            <div className="bg-slate-900 text-white p-4 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center text-accent">
-                  <Activity className="w-4 h-4 text-accent" />
+      {/* Full Citizen Report Analysis Drawer */}
+      {selectedReportForTimeline && (() => {
+        const rep = selectedReportForTimeline;
+        const isFire = (rep.classification || '').toLowerCase().includes('burn') || (rep.classification || '').toLowerCase().includes('fire');
+        const confVal = rep.confidence != null ? Number(rep.confidence) : 0;
+        const baseBoost = isFire ? 45 : 25;
+        const severityScore = Math.min(100, Math.round(((confVal * 0.6) + (baseBoost * 0.1)) * 10) / 10);
+        const detectingModel = rep.detecting_model || (isFire ? 'Fire Model (best.pt)' : 'Waste Model (best2.pt)');
+        const displayPhoto = rep.annotated_url ? getImageUrl(rep.annotated_url) : getImageUrl(rep.photo_url);
+        const mapboxToken = import.meta.env.VITE_MAPBOX_TOKEN;
+        const staticMapUrl = mapboxToken && rep.lat && rep.lng
+          ? `https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/pin-s+22c55e(${rep.lng},${rep.lat})/${rep.lng},${rep.lat},14,0/500x200@2x?access_token=${mapboxToken}`
+          : null;
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+            <div className="bg-white rounded-card max-w-xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
+              {/* Drawer Header */}
+              <div className="bg-slate-900 text-white p-4 flex items-center justify-between flex-shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-full bg-accent/20 border border-accent/40 flex items-center justify-center text-accent">
+                    <Activity className="w-5 h-5 text-accent" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-sm">
+                        {lang === 'ta' ? `புகார் ஆய்வு #${rep.id}` : `Incident Dossier #${rep.id}`}
+                      </span>
+                      <StatusBadge status={rep.status} />
+                    </div>
+                    <p className="text-[11px] text-slate-400 font-mono">
+                      File No: DS-2026-{String(rep.id).padStart(5, '0')} • {rep.zone_name || t('outside_coverage')}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="font-bold text-sm">Incident Timeline #{selectedReportForTimeline.id}</h3>
-                  <p className="text-[11px] text-slate-400">{selectedReportForTimeline.zone_name || 'Coimbatore'}</p>
-                </div>
+                <button
+                  onClick={handleCloseTimeline}
+                  className="p-1.5 rounded-element text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                  title={t('btn_close')}
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
-              <button
-                onClick={handleCloseTimeline}
-                className="p-1 rounded-element text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
 
-            {/* Modal Body: Stepper */}
-            <div className="p-6 space-y-6">
-              {loadingTimeline ? (
-                <div className="py-12 flex flex-col items-center justify-center text-slate-400">
-                  <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin mb-2" />
-                  <span className="text-xs">Fetching live database timeline...</span>
-                </div>
-              ) : (
-                <div className="relative pl-6 space-y-8">
-                  {stagesDef.map((stage, idx) => {
-                    // Find if stage exists in real DB entries
-                    const entry = timelineEntries.find((e) => e.stage === stage.key);
-                    const isCompleted = !!entry;
-                    const isLast = idx === stagesDef.length - 1;
+              {/* Drawer Body: 4 Sections */}
+              <div className="overflow-y-auto p-5 sm:p-6 space-y-6 flex-1 text-slate-800">
+                
+                {/* SECTION 1: AI Analysis Result */}
+                <div className="space-y-3 bg-slate-50/70 p-4 rounded-card border border-slate-200">
+                  <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                      <Sparkles className="w-4 h-4 text-accent" />
+                      <span>{t('sec_ai_analysis')}</span>
+                    </h4>
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-sky-700 bg-sky-100 px-2 py-0.5 rounded-full border border-sky-200">
+                      <Cpu className="w-3 h-3" />
+                      {detectingModel}
+                    </span>
+                  </div>
 
-                    return (
-                      <div key={stage.key} className="relative">
-                        {/* Connecting Line */}
-                        {!isLast && (
-                          <div 
-                            className={`absolute -left-4 top-6 bottom-[-2rem] w-0.5 ${
-                              isCompleted 
-                                ? 'bg-sky-500' 
-                                : 'border-l-2 border-dashed border-slate-300'
-                            }`}
-                          />
-                        )}
+                  {/* Photo with Bounding Box annotation preview */}
+                  <div className="relative rounded-element overflow-hidden bg-slate-900 border border-slate-300 max-h-56 group">
+                    <img 
+                      src={displayPhoto} 
+                      alt="Analyzed incident" 
+                      className="w-full h-48 sm:h-52 object-contain bg-slate-950"
+                      onError={(e) => { e.target.src = getImageUrl(rep.photo_url); }}
+                    />
+                    {rep.annotated_url && (
+                      <span className="absolute bottom-2 left-2 bg-slate-900/80 backdrop-blur-xs text-white text-[10px] font-mono px-2 py-0.5 rounded border border-slate-700">
+                        YOLOv8 AI Detection Box
+                      </span>
+                    )}
+                  </div>
 
-                        {/* Stage Node Icon */}
-                        <div 
-                          className={`absolute -left-6 top-0.5 w-5 h-5 rounded-full flex items-center justify-center shadow-xs transition-colors ${
-                            isCompleted 
-                              ? 'bg-sky-500 text-white' 
-                              : 'border-2 border-slate-300 bg-white text-slate-300'
-                          }`}
-                        >
-                          {isCompleted ? (
-                            <Check className="w-3 h-3 stroke-[3]" />
-                          ) : (
-                            <div className="w-1.5 h-1.5 rounded-full bg-slate-300" />
-                          )}
-                        </div>
-
-                        {/* Stage Content */}
-                        <div className="space-y-1">
-                          <div className="flex items-center justify-between">
-                            <span className={`text-xs font-bold ${isCompleted ? 'text-slate-900' : 'text-slate-400'}`}>
-                              {stage.label}
-                            </span>
-                            {isCompleted ? (
-                              <span className="text-[11px] font-mono text-slate-500">
-                                {formatDate(entry.created_at)}
-                              </span>
-                            ) : (
-                              <span className="text-[10px] uppercase font-semibold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
-                                {t('timeline_pending')}
-                              </span>
-                            )}
-                          </div>
-
-                          {isCompleted && entry.note && (
-                            <p className="text-[11px] text-slate-500 leading-relaxed bg-slate-50 p-2 rounded-element border border-slate-100">
-                              {entry.note}
-                            </p>
-                          )}
-                        </div>
+                  {/* Badges and Metrics */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    <div className="space-y-1.5 bg-white p-3 rounded-element border border-slate-200">
+                      <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
+                        {t('report_waste_type_label')}
+                      </span>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-900 capitalize flex items-center gap-1">
+                          {isFire ? <Flame className="w-3.5 h-3.5 text-rose-500" /> : <Trash2 className="w-3.5 h-3.5 text-orange-500" />}
+                          {rep.classification?.replace('_', ' ') || 'Waste Pile'}
+                        </span>
+                        <span className="text-xs font-mono font-bold text-slate-700">
+                          {confVal ? `${Math.round(confVal)}%` : '—'}
+                        </span>
                       </div>
-                    );
-                  })}
+                      {/* Visual Confidence Bar */}
+                      <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                        <div 
+                          className={`h-full transition-all duration-500 ${
+                            isFire ? 'bg-rose-500' : 'bg-orange-500'
+                          }`}
+                          style={{ width: `${Math.min(100, Math.max(5, confVal))}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5 bg-white p-3 rounded-element border border-slate-200 flex flex-col justify-between">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                          {t('health_severity')}
+                        </span>
+                        <span className={`text-xs font-mono font-bold px-2 py-0.5 rounded ${
+                          severityScore >= 70 ? 'bg-red-100 text-red-800' : severityScore >= 45 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
+                        }`}>
+                          {severityScore} / 100
+                        </span>
+                      </div>
+                      <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                        <div 
+                          className={`h-full transition-all duration-500 ${
+                            severityScore >= 70 ? 'bg-red-500' : severityScore >= 45 ? 'bg-amber-500' : 'bg-emerald-500'
+                          }`}
+                          style={{ width: `${severityScore}%` }}
+                        />
+                      </div>
+                      <span className="text-[10px] text-slate-400">
+                        {isFire ? 'Immediate respiratory risk from smoke' : 'Sanitation hazard & vector breeding risk'}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-              )}
-            </div>
 
-            {/* Modal Footer */}
-            <div className="bg-slate-50 p-3.5 border-t border-slate-200 flex justify-end">
-              <button
-                onClick={handleCloseTimeline}
-                className="px-4 py-1.5 rounded-element bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-semibold transition-colors"
-              >
-                Close
-              </button>
-            </div>
+                {/* SECTION 2: Status Timeline */}
+                <div className="space-y-3 bg-white p-4 rounded-card border border-slate-200">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5 border-b border-slate-200 pb-2">
+                    <Clock className="w-4 h-4 text-accent" />
+                    <span>{t('sec_timeline')}</span>
+                  </h4>
 
+                  {loadingTimeline ? (
+                    <div className="py-8 flex flex-col items-center justify-center text-slate-400">
+                      <div className="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin mb-2" />
+                      <span className="text-xs">{lang === 'ta' ? 'காலவரிசை பெறப்படுகிறது...' : 'Loading live database timeline...'}</span>
+                    </div>
+                  ) : (
+                    <div className="relative pl-6 space-y-6 pt-2">
+                      {stagesDef.map((stage, idx) => {
+                        const entry = timelineEntries.find((e) => e.stage === stage.key);
+                        const isCompleted = !!entry;
+                        const isLast = idx === stagesDef.length - 1;
+
+                        return (
+                          <div key={stage.key} className="relative">
+                            {!isLast && (
+                              <div 
+                                className={`absolute -left-4 top-5 bottom-[-1.5rem] w-0.5 ${
+                                  isCompleted ? 'bg-sky-500' : 'border-l-2 border-dashed border-slate-300'
+                                }`}
+                              />
+                            )}
+
+                            <div 
+                              className={`absolute -left-6 top-0.5 w-5 h-5 rounded-full flex items-center justify-center shadow-xs transition-colors ${
+                                isCompleted 
+                                  ? 'bg-sky-500 text-white' 
+                                  : 'border-2 border-slate-300 bg-white text-slate-300'
+                              }`}
+                            >
+                              {isCompleted ? (
+                                <Check className="w-3 h-3 stroke-[3]" />
+                              ) : (
+                                <div className="w-1.5 h-1.5 rounded-full bg-slate-300" />
+                              )}
+                            </div>
+
+                            <div className="space-y-0.5">
+                              <div className="flex items-center justify-between">
+                                <span className={`text-xs font-bold ${isCompleted ? 'text-slate-900' : 'text-slate-400'}`}>
+                                  {stage.label}
+                                </span>
+                                {isCompleted ? (
+                                  <span className="text-[10px] font-mono text-slate-500">
+                                    {formatDate(entry.created_at)}
+                                  </span>
+                                ) : (
+                                  <span className="text-[9px] uppercase font-semibold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
+                                    {t('timeline_pending')}
+                                  </span>
+                                )}
+                              </div>
+
+                              {isCompleted && entry.note && (
+                                <p className="text-[11px] text-slate-600 leading-relaxed bg-slate-50 p-2 rounded border border-slate-100 mt-1">
+                                  {entry.note}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* SECTION 3: Location Details */}
+                <div className="space-y-3 bg-white p-4 rounded-card border border-slate-200">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5 border-b border-slate-200 pb-2">
+                    <MapPin className="w-4 h-4 text-accent" />
+                    <span>{t('sec_location')}</span>
+                  </h4>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="bg-slate-50 p-3 rounded-element border border-slate-200">
+                      <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block mb-1">
+                        {t('officer_col_ward')}
+                      </span>
+                      {rep.zone_name ? (
+                        <div>
+                          <p className="text-xs font-bold text-slate-900">{rep.zone_name}</p>
+                          {rep.ward_number ? (
+                            <p className="text-[11px] text-slate-600">Ward {rep.ward_number} • CCMC Jurisdiction</p>
+                          ) : (
+                            <p className="text-[11px] text-slate-600">Coimbatore Corporation</p>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="text-xs font-bold text-amber-700">{t('outside_coverage')}</p>
+                      )}
+                    </div>
+
+                    <div className="bg-slate-50 p-3 rounded-element border border-slate-200 flex flex-col justify-between">
+                      <div>
+                        <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block mb-1">
+                          {t('report_gps_title')}
+                        </span>
+                        <p className="text-xs font-mono font-bold text-slate-800">
+                          {rep.lat.toFixed(6)}, {rep.lng.toFixed(6)}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleCopyCoords(rep.lat, rep.lng)}
+                        className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-semibold text-accent hover:text-accent-hover self-start"
+                      >
+                        <Copy className="w-3 h-3" />
+                        <span>{t('copy_coords')}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Mini static map preview */}
+                  <div className="rounded-element overflow-hidden border border-slate-200 bg-slate-100 relative h-36 flex items-center justify-center">
+                    {staticMapUrl ? (
+                      <img 
+                        src={staticMapUrl} 
+                        alt="Location map preview" 
+                        className="w-full h-full object-cover"
+                        onError={(e) => { e.target.style.display = 'none'; }}
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center justify-center text-slate-400 p-4 text-center">
+                        <div className="w-9 h-9 rounded-full bg-emerald-100 border border-emerald-300 flex items-center justify-center text-emerald-700 mb-1.5">
+                          <MapPin className="w-5 h-5" />
+                        </div>
+                        <span className="text-xs font-bold text-slate-700">
+                          {rep.zone_name || 'Coimbatore'} ({rep.lat.toFixed(4)}, {rep.lng.toFixed(4)})
+                        </span>
+                        <span className="text-[10px] text-slate-400 mt-0.5">
+                          CCMC Geotagged Boundary Zone
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* SECTION 4: Actions */}
+                <div className="space-y-3 bg-slate-50/70 p-4 rounded-card border border-slate-200">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5 border-b border-slate-200 pb-2">
+                    <ShieldCheck className="w-4 h-4 text-accent" />
+                    <span>{t('sec_actions')}</span>
+                  </h4>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    {/* Action 1: Download PDF Dossier */}
+                    <button
+                      type="button"
+                      disabled={downloadingPdf}
+                      onClick={() => handleDownloadPdf(rep.id)}
+                      className="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-element bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-xs transition-colors disabled:opacity-50"
+                    >
+                      {downloadingPdf ? (
+                        <>
+                          <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          <span>{t('downloading_pdf')}</span>
+                        </>
+                      ) : (
+                        <>
+                          <FileDown className="w-4 h-4 text-rose-400" />
+                          <span>{t('btn_download_pdf')}</span>
+                        </>
+                      )}
+                    </button>
+
+                    {/* Action 2: Share on WhatsApp */}
+                    <button
+                      type="button"
+                      onClick={() => handleShareWhatsApp(rep)}
+                      className="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-element bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-colors"
+                    >
+                      <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
+                        <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.842-.981z"/>
+                      </svg>
+                      <span>{t('share_whatsapp')}</span>
+                    </button>
+
+                    {/* Action 3: Copy Report Link */}
+                    <button
+                      type="button"
+                      onClick={() => handleCopyReportLink(rep.id)}
+                      className="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-element bg-white hover:bg-slate-100 text-slate-800 text-xs font-bold border border-slate-300 shadow-xs transition-colors"
+                    >
+                      <Copy className="w-3.5 h-3.5 text-slate-500" />
+                      <span>{t('btn_copy_link')}</span>
+                    </button>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Drawer Footer */}
+              <div className="bg-slate-50 p-3.5 border-t border-slate-200 flex justify-end flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={handleCloseTimeline}
+                  className="px-5 py-2 rounded-element bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-bold transition-colors"
+                >
+                  {t('btn_close')}
+                </button>
+              </div>
+
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
     </div>
   );

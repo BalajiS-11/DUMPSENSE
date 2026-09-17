@@ -94,6 +94,8 @@ class ReportOut(BaseModel):
     reporter_name: Optional[str] = None
     created_at: datetime
     reporter_trust_score: Optional[int] = None
+    detecting_model: Optional[str] = None
+    annotated_url: Optional[str] = None
 
     class Config:
         from_attributes = True

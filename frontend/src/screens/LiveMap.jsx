@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { reportsApi, predictApi, zonesApi, createReportsWebSocket, getImageUrl } from '../api';
 import { StatusBadge, ConfidenceBadge } from '../components/Badges';
+import { useLanguage } from '../context/LanguageContext';
 
 // Coimbatore Central Coordinate (Lat: 11.002, Lng: 77.005)
 const COIMBATORE_CENTER = [77.0050, 11.0020];
@@ -45,6 +46,7 @@ function haversineDistanceMeters(lat1, lon1, lat2, lon2) {
 }
 
 export default function LiveMap({ onSelectReport }) {
+  const { t } = useLanguage();
   const mapContainer = useRef(null);
   const map = useRef(null);
   const reportMarkersRef = useRef([]);
@@ -65,11 +67,14 @@ export default function LiveMap({ onSelectReport }) {
   const [selectedOfficialZone, setSelectedOfficialZone] = useState(null);
   const [loadingReports, setLoadingReports] = useState(true);
 
-  // 1. Fetch reports
+  // 1. Fetch reports on initial mount: load confirmed & unverified historical reports
   const fetchReports = async () => {
     try {
       setLoadingReports(true);
-      const params = selectedZone !== 'all' ? { zone_id: parseInt(selectedZone) } : {};
+      const params = { status: 'confirmed,unverified' };
+      if (selectedZone !== 'all') {
+        params.zone_id = parseInt(selectedZone);
+      }
       const data = await reportsApi.getReports(params);
       setReports(data);
     } catch (err) {
@@ -97,17 +102,30 @@ export default function LiveMap({ onSelectReport }) {
     fetchOfficialZones();
   }, []);
 
-  // 3. Real-time WebSocket connection
+  // 3. Real-time WebSocket connection (Fix 1: handle report_created and report_updated)
   useEffect(() => {
     const cleanupWs = createReportsWebSocket((message) => {
-      if (message.type === 'REPORT_CREATED') {
-        setReports((prev) => [message.data, ...prev]);
-      } else if (message.type === 'REPORT_VERIFIED') {
-        setReports((prev) =>
-          prev.map((r) => (r.id === message.data.id ? message.data : r))
-        );
-        if (selectedPin && selectedPin.id === message.data.id) {
-          setSelectedPin(message.data);
+      const evt = message.event || (message.type === 'REPORT_CREATED' ? 'report_created' : 'report_updated');
+      const reportData = message.report || message.data;
+      if (!reportData || !reportData.id) return;
+
+      if (evt === 'report_created') {
+        setReports((prev) => {
+          if (prev.some((r) => r.id === reportData.id)) {
+            return prev.map((r) => (r.id === reportData.id ? reportData : r));
+          }
+          return [reportData, ...prev];
+        });
+      } else if (evt === 'report_updated') {
+        setReports((prev) => {
+          const exists = prev.some((r) => r.id === reportData.id);
+          if (exists) {
+            return prev.map((r) => (r.id === reportData.id ? reportData : r));
+          }
+          return [reportData, ...prev];
+        });
+        if (selectedPin && selectedPin.id === reportData.id) {
+          setSelectedPin(reportData);
         }
       }
     });
@@ -173,27 +191,49 @@ export default function LiveMap({ onSelectReport }) {
 
     reports.forEach((report) => {
       const isConfirmed = report.status === 'confirmed';
+      const isRejected = report.status === 'rejected';
       const isBurning = report.classification === 'open_burning' || report.classification === 'fire';
-      const isHighRiskPending = !isConfirmed && (report.confidence || 0) >= 0.70;
+      const isWaste = report.classification === 'waste_pile';
+      const isHighRiskPending = !isConfirmed && !isRejected && (report.confidence || 0) >= 0.70;
+
+      let bgColor = '#F59E0B'; // status: unverified -> amber pin #F59E0B
+      let borderColor = '#FBBF24';
+      let pinSize = 'w-8 h-8';
+      let iconSize = '14';
+      let opacityClass = '';
+
+      if (isConfirmed && isBurning) {
+        bgColor = '#DC2626'; // status: confirmed + open_burning -> red pin #DC2626
+        borderColor = '#EF4444';
+      } else if (isConfirmed && isWaste) {
+        bgColor = '#EA580C'; // status: confirmed + waste_pile -> dark orange pin #EA580C
+        borderColor = '#F97316';
+      } else if (isConfirmed) {
+        bgColor = '#DC2626';
+        borderColor = '#EF4444';
+      } else if (isRejected) {
+        bgColor = '#94A3B8'; // status: rejected -> gray pin #94A3B8 (dimmed, smaller size)
+        borderColor = '#CBD5E1';
+        pinSize = 'w-6 h-6';
+        iconSize = '11';
+        opacityClass = 'opacity-70';
+      }
 
       const el = document.createElement('div');
-      el.className = 'custom-map-marker group cursor-pointer';
+      el.className = `custom-map-marker group cursor-pointer ${opacityClass}`;
 
       const pulseHtml = isHighRiskPending
         ? `<div class="absolute -inset-1.5 rounded-full bg-amber-400/40 animate-ping"></div>`
         : ``;
 
       const iconSvg = isBurning
-        ? `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>`
-        : `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>`;
-
-      const bgColor = isConfirmed ? '#DC2626' : '#F59E0B';
-      const borderColor = isConfirmed ? '#EF4444' : '#FBBF24';
+        ? `<svg xmlns="http://www.w3.org/2000/svg" width="${iconSize}" height="${iconSize}" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>`
+        : `<svg xmlns="http://www.w3.org/2000/svg" width="${iconSize}" height="${iconSize}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>`;
 
       el.innerHTML = `
         <div class="relative flex items-center justify-center">
           ${pulseHtml}
-          <div style="background-color: ${bgColor}; border: 2px solid ${borderColor};" class="w-8 h-8 rounded-full flex items-center justify-center text-white shadow-xl transform transition-transform duration-200 hover:scale-125">
+          <div style="background-color: ${bgColor}; border: 2px solid ${borderColor};" class="${pinSize} rounded-full flex items-center justify-center text-white shadow-xl transform transition-transform duration-200 hover:scale-125">
             ${iconSvg}
           </div>
           <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block bg-slate-900/95 text-white text-[10px] font-mono px-2 py-0.5 rounded shadow-lg whitespace-nowrap z-50 border border-slate-700">
@@ -293,7 +333,7 @@ export default function LiveMap({ onSelectReport }) {
     : 89;
 
   return (
-    <div className="relative w-full h-[calc(100vh-4rem)] bg-slate-950 flex flex-col overflow-hidden text-slate-100">
+    <div className="relative w-full h-full min-h-[450px] bg-slate-950 flex flex-col overflow-hidden text-slate-100">
       
       {/* Real "Mass Model" Analytics & Layer Controls Strip */}
       <div className="relative z-20 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 px-4 sm:px-6 py-2 flex flex-wrap items-center justify-between gap-3">
@@ -307,7 +347,7 @@ export default function LiveMap({ onSelectReport }) {
               onChange={(e) => setSelectedZone(e.target.value)}
               className="bg-transparent text-slate-200 border-none font-semibold text-xs focus:ring-0 cursor-pointer"
             >
-              <option value="all" className="bg-slate-900">All Coimbatore Wards</option>
+              <option value="all" className="bg-slate-900">{t('filter_all_wards')}</option>
               <option value="1" className="bg-slate-900">Singanallur</option>
               <option value="2" className="bg-slate-900">Ondipudur</option>
               <option value="3" className="bg-slate-900">Vellalore</option>
@@ -347,7 +387,7 @@ export default function LiveMap({ onSelectReport }) {
             }`}
           >
             <span className={`w-2 h-2 rounded-full ${showOfficialLayer ? 'bg-white' : 'bg-green-500'}`} />
-            <span>Official C&D ({officialZones.length})</span>
+            <span>{t('map_layer_official')} ({officialZones.length})</span>
           </button>
 
           {/* Layer 2: Illegal Dump Reports */}
@@ -361,7 +401,7 @@ export default function LiveMap({ onSelectReport }) {
             }`}
           >
             <span className={`w-2 h-2 rounded-full ${showReportsLayer ? 'bg-white' : 'bg-red-500'}`} />
-            <span>Illegal Dumps ({reports.length})</span>
+            <span>{t('map_layer_reports')} ({reports.length})</span>
           </button>
 
           {/* Layer 3: Hotspot Heatmap */}
@@ -375,7 +415,7 @@ export default function LiveMap({ onSelectReport }) {
             }`}
           >
             <Sparkles className={`w-3 h-3 ${predictTonight ? 'animate-spin text-white' : 'text-amber-400'}`} />
-            <span>Heatmap</span>
+            <span>{t('map_layer_heatmap')}</span>
           </button>
         </div>
 
@@ -409,11 +449,8 @@ export default function LiveMap({ onSelectReport }) {
           <div className="absolute top-4 left-4 z-10 bg-slate-900/95 backdrop-blur-md border border-slate-700/80 rounded-element p-3 max-w-xs shadow-xl space-y-1">
             <div className="flex items-center gap-2 text-white text-xs font-bold">
               <MapPin className="w-3.5 h-3.5 text-accent" />
-              <span>No Active Dump Reports</span>
+              <span>{t('map_empty')}</span>
             </div>
-            <p className="text-[11px] text-slate-400">
-              Only authentic submitted citizen reports appear here. Showing {officialZones.length} official CCMC collection points.
-            </p>
           </div>
         )}
 
@@ -475,7 +512,7 @@ export default function LiveMap({ onSelectReport }) {
                   <span>PROXIMITY WARNING ({nearbyOfficialPoint.distanceMeters}m)</span>
                 </div>
                 <p className="text-[11px] leading-relaxed text-amber-100">
-                  ⚠️ Illegal dump within <strong className="text-white">{nearbyOfficialPoint.distanceMeters}m</strong> of official C&D collection point: <strong className="text-white">{nearbyOfficialPoint.name}</strong> (Ward {nearbyOfficialPoint.ward_number}). Indicates public awareness failure or collection capacity issue.
+                  {t('proximity_alert').replace('{distance}', nearbyOfficialPoint.distanceMeters).replace('{ward}', nearbyOfficialPoint.ward_number || 'CCMC')}
                 </p>
               </div>
             )}
@@ -559,15 +596,15 @@ export default function LiveMap({ onSelectReport }) {
           <div className="flex items-center gap-4 pt-1">
             <div className="flex items-center gap-1.5">
               <span className="w-3 h-3 rounded-full bg-[#16A34A] border-2 border-white shadow-xs" />
-              <span className="text-slate-200 font-medium">Official C&D Point</span>
+              <span className="text-slate-200 font-medium">{t('map_legend_official')}</span>
             </div>
             <div className="flex items-center gap-1.5">
               <span className="w-3 h-3 rounded-full bg-status-confirmed border border-red-400" />
-              <span className="text-slate-300">Illegal Dump</span>
+              <span className="text-slate-300">{t('map_legend_confirmed')}</span>
             </div>
             <div className="flex items-center gap-1.5">
               <span className="w-3 h-3 rounded-full bg-status-pending border border-amber-300 animate-pulse" />
-              <span className="text-slate-300">Unverified</span>
+              <span className="text-slate-300">{t('map_legend_pending')}</span>
             </div>
           </div>
           <div className="text-[9px] text-slate-400 font-mono pt-0.5 border-t border-slate-800/80">
