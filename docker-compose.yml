@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgis/postgis:15-3.3
+    container_name: dumpsense_db
+    environment:
+      POSTGRES_USER: dumpsense
+      POSTGRES_PASSWORD: dumpsense_secret
+      POSTGRES_DB: dumpsense
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dumpsense -d dumpsense"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: dumpsense_backend
+    environment:
+      DATABASE_URL: postgresql://dumpsense:dumpsense_secret@db:5432/dumpsense
+      JWT_SECRET: dumpsense_jwt_secret_key_coimbatore_2026
+      MODEL_PATH: /app/models/best.pt
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/uploads:/app/uploads
+      - ./FireDetection/best.pt:/app/models/best.pt:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: dumpsense_frontend
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_URL: http://localhost:8000
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

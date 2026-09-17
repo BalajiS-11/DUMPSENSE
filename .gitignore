@@ -1,0 +1,54 @@
+﻿# Python Virtual Environments
+venv/
+*/venv/
+.venv/
+env/
+ENV/
+MODEL/venv/
+FireDetection/venv/
+
+# Node dependencies and build artifacts
+node_modules/
+*/node_modules/
+dist/
+*/dist/
+dist-ssr/
+
+# Python cache & bytecode
+__pycache__/
+*/__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# Large Datasets & Archives
+Dataset/
+*.zip
+*.tar.gz
+*.rar
+
+# SQLite Database & Local Data
+*.db
+*.sqlite
+*.sqlite3
+dumpsense.db
+backend/dumpsense.db
+
+# Dynamic User Uploads & ML Runs
+backend/uploads/*
+!backend/uploads/.gitkeep
+runs/
+*/runs/
+
+# IDE & OS Artifacts
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Environment Variables
+.env
+*.env.local
