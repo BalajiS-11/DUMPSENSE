@@ -4,7 +4,7 @@ import { authApi } from '../api';
 import { useLanguage } from '../context/LanguageContext';
 
 export default function LandingLogin({ onLoginSuccess }) {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const [isRegister, setIsRegister] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
