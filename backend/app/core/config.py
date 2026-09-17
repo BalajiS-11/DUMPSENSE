@@ -17,14 +17,30 @@ class Settings(BaseSettings):
     UPLOAD_DIR: Path = BASE_DIR / "uploads"
     _ROOT_DIR: Path = Path(__file__).resolve().parent.parent.parent.parent
     FIRE_MODEL_PATH: Path = (
-        _ROOT_DIR / "MODEL" / "best.pt"
-        if (_ROOT_DIR / "MODEL" / "best.pt").exists()
-        else (_ROOT_DIR / "FireDetection" / "best.pt")
+        Path(os.getenv("FIRE_MODEL_PATH"))
+        if os.getenv("FIRE_MODEL_PATH")
+        else (
+            _ROOT_DIR / "MODEL" / "best.pt"
+            if (_ROOT_DIR / "MODEL" / "best.pt").exists()
+            else (
+                BASE_DIR / "models" / "best.pt"
+                if (BASE_DIR / "models" / "best.pt").exists()
+                else (_ROOT_DIR / "FireDetection" / "best.pt")
+            )
+        )
     )
     WASTE_MODEL_PATH: Path = (
-        _ROOT_DIR / "MODEL" / "best2.pt"
-        if (_ROOT_DIR / "MODEL" / "best2.pt").exists()
-        else (_ROOT_DIR / "FireDetection" / "best2.pt")
+        Path(os.getenv("WASTE_MODEL_PATH"))
+        if os.getenv("WASTE_MODEL_PATH")
+        else (
+            _ROOT_DIR / "MODEL" / "best2.pt"
+            if (_ROOT_DIR / "MODEL" / "best2.pt").exists()
+            else (
+                BASE_DIR / "models" / "best2.pt"
+                if (BASE_DIR / "models" / "best2.pt").exists()
+                else (_ROOT_DIR / "FireDetection" / "best2.pt")
+            )
+        )
     )
     MODEL_PATH: Path = FIRE_MODEL_PATH
 
